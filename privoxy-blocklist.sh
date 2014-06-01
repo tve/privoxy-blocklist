@@ -9,7 +9,7 @@
 #
 ##################
 #
-#                  Sumary: 
+#                  Sumary:
 #                   This script downloads, converts and installs
 #                   AdblockPlus lists into Privoxy
 #
@@ -25,16 +25,12 @@
 #
 ######################################################################
 
-# script config-file
-SCRIPTCONF=/etc/conf.d/privoxy-blacklist
-# dependencies
-DEPENDS=( 'privoxy' 'sed' 'grep' 'bash' 'wget' )
+DBG=1
+URLS=("https://easylist-downloads.adblockplus.org/easylistgermany.txt" "https://easylist-downloads.adblockplus.org/easylist.txt")
+TMPDIR=/tmp/privoxy-blocklist
 
-######################################################################
-#
-#                  No changes needed after this line.
-#
-######################################################################
+rm -rf $TMPDIR
+mkdir $TMPDIR
 
 function usage()
 {
@@ -48,23 +44,6 @@ function usage()
   echo "      -v 3:  Enable verbosity 3. Show all possible output and don't delete temporary files.(For debugging only!!)"
   echo "      -r:    Remove all lists build by this script."
 }
-
-[ ${UID} -ne 0 ] && echo -e "Root privileges needed. Exit.\n\n" && usage && exit 1
-
-for dep in ${DEPENDS[@]}
-do
-  if ! type -p ${dep} >/dev/null
-  then
-    echo "The command ${dep} can't be found. Please install the package providing ${dep} and run $0 again. Exit" >&2
-    exit 1
-  fi
-done
-
-if [[ ! -d "$(dirname ${SCRIPTCONF})" ]]
-then
-  echo "The config directory $(dirname ${SCRIPTCONF}) doesn't exist. Please either adjust the variable SCRIPTCONF in this script or create the directory." >&2
-  exit 1
-fi
 
 function debug()
 {
@@ -83,7 +62,7 @@ function main()
 
     # download list
     debug "Downloading ${url} ..." 0
-    wget -t 3 --no-check-certificate -O ${file} ${url} >${TMPDIR}/wget-${url//\//#}.log 2>&1
+    wget -t 3 --no-check-certificate -O ${file} ${url}
     debug "$(cat ${TMPDIR}/wget-${url//\//#}.log)" 2
     debug ".. downloading done." 0
     [ "$(grep -E '^.*\[Adblock.*\].*$' ${file})" == "" ] && echo "The list recieved from ${url} isn't an AdblockPlus list. Skipped" && continue
@@ -136,112 +115,13 @@ function main()
     sed '/^@@.*/!d;s/^@@//g;/\$.*image.*/!d;s/\$.*image.*//g;/#/d;s/\./\\./g;s/\?/\\?/g;s/\*/.*/g;s/(/\\(/g;s/)/\\)/g;s/\[/\\[/g;s/\]/\\]/g;s/\^/[\/\&:\?=_]/g;s/^||/\./g;s/^|/^/g;s/|$/\$/g;/|/d' ${file} >> ${actionfile}
     debug "... created and added image handler ..." 1
     debug "... created actionfile for ${list}." 1
-    
-    # install Privoxy actionsfile
-    install -o ${PRIVOXY_USER} -g ${PRIVOXY_GROUP} ${VERBOSE} ${actionfile} ${PRIVOXY_DIR}
-    if [ "$(grep $(basename ${actionfile}) ${PRIVOXY_CONF})" == "" ] 
-    then
-      debug "\nModifying ${PRIVOXY_CONF} ..." 0
-      sed "s/^actionsfile user\.action/actionsfile $(basename ${actionfile})\nactionsfile user.action/" ${PRIVOXY_CONF} > ${TMPDIR}/config
-      debug "... modification done.\n" 0
-      debug "Installing new config ..." 0
-      install -o ${PRIVOXY_USER} -g ${PRIVOXY_GROUP} ${VERBOSE} ${TMPDIR}/config ${PRIVOXY_CONF}
-      debug "... installation done\n" 0
-    fi	
-
-    # install Privoxy filterfile
-    install -o ${PRIVOXY_USER} -g ${PRIVOXY_GROUP} ${VERBOSE} ${filterfile} ${PRIVOXY_DIR}
-    if $(grep $(basename ${filterfile}) ${PRIVOXY_CONF})
-    then
-      debug "\nModifying ${PRIVOXY_CONF} ..." 0
-      sed "s/^\(#*\)filterfile user\.filter/filterfile $(basename ${filterfile})\n\1filterfile user.filter/" ${PRIVOXY_CONF} > ${TMPDIR}/config
-      debug "... modification done.\n" 0
-      debug "Installing new config ..." 0
-      install -o ${PRIVOXY_USER} -g ${PRIVOXY_GROUP} ${VERBOSE} ${TMPDIR}/config ${PRIVOXY_CONF}
-      debug "... installation done\n" 0
-    fi	
-
-    debug "... ${url} installed successfully.\n" 0
   done
 }
-
-if [[ ! -f "${SCRIPTCONF}" ]]
-then
-  echo "No config found in ${SCRIPTCONF}. Creating default one and exiting because you might have to adjust it."
-  echo "# Config of privoxy-blocklist
-
-# array of URL for AdblockPlus lists
-#  for more sources just add it within the round brackets
-URLS=(\"https://easylist-downloads.adblockplus.org/easylistgermany.txt\" \"http://adblockplus.mozdev.org/easylist/easylist.txt\")
-
-# config for privoxy initscript providing PRIVOXY_CONF, PRIVOXY_USER and PRIVOXY_GROUP
-INIT_CONF=\"/etc/conf.d/privoxy\"
-
-# !! if the config above doesn't exist set these variables here !!
-# !! These values will be overwritten by INIT_CONF !!
-#PRIVOXY_USER=\"privoxy\"
-#PRIVOXY_GROUP=\"privoxy\"
-#PRIVOXY_CONF=\"/etc/privoxy/config\"
-
-# name for lock file (default: script name)
-TMPNAME=\"\$(basename \${0})\"
-# directory for temporary files
-TMPDIR=\"/tmp/\${TMPNAME}\"
-
-# Debug-level
-#   -1 = quiet
-#    0 = normal
-#    1 = verbose
-#    2 = more verbose (debugging)
-#    3 = incredibly loud (function debugging)
-DBG=0
-" > "${SCRIPTCONF}"
-  exit 1
-fi
-
-[[ ! -r "${SCRIPTCONF}" ]] && debug "Can't read ${SCRIPTCONF}. Permission denied." -1
-
-# load script config
-source "${SCRIPTCONF}"
-# load privoxy config
-[[ -r "${INIT_CONF}" ]] && source "${INIT_CONF}"
-
-# check whether needed variables are set
-[[ -z "${PRIVOXY_CONF}" ]] && echo "\$PRIVOXY_CONF isn't set please either provice a valid initscript config or set it in ${SCRIPTCONF} ." >&2 && exit 1
-[[ -z "${PRIVOXY_USER}" ]] && echo "\$PRIVOXY_USER isn't set please either provice a valid initscript config or set it in ${SCRIPTCONF} ." >&2 && exit 1
-[[ -z "${PRIVOXY_GROUP}" ]] && echo "\$PRIVOXY_GROUP isn't set please either provice a valid initscript config or set it in ${SCRIPTCONF} ." >&2 && exit 1
-
-# set command to be run on exit
-[ ${DBG} -le 2 ] && trap "rm -fr ${TMPDIR};exit" INT TERM EXIT
-
-# set privoxy config dir
-PRIVOXY_DIR="$(dirname ${PRIVOXY_CONF})"
-
-# create temporary directory and lock file
-install -d -m700 ${TMPDIR}
-
-# check lock file
-if [ -f "${TMPDIR}/${TMPNAME}.lock" ]
-then
-  read -r fpid <"${TMPDIR}/${TMPNAME}.lock"
-  ppid=$(pidof -o %PPID -x "${TMPNAME}")
-  if [[ $fpid = "${ppid}" ]] 
-  then
-    echo "An Instance of ${TMPNAME} is already running. Exit" && exit 1
-  else
-    debug "Found dead lock file." 0
-    rm -f "${TMPDIR}/${TMPNAME}.lock"
-    debug "File removed." 0
-  fi
-fi
-
-# safe PID in lock-file
-echo $$ > "${TMPDIR}/${TMPNAME}.lock"
 
 # loop for options
 while getopts ":hrqv:" opt
 do
-  case "${opt}" in 
+  case "${opt}" in
     "v")
       DBG="${OPTARG}"
       VERBOSE="-v"
@@ -270,8 +150,3 @@ done
 
 debug "URL-List: ${URLS}\nPrivoxy-Configdir: ${PRIVOXY_DIR}\nTemporary directory: ${TMPDIR}" 2
 main
-
-# restore default exit command
-trap - INT TERM EXIT
-[ ${DBG} -lt 3 ] && rm -r ${VERBOSE} "${TMPDIR}"
-exit 0
