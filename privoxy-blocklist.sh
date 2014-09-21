@@ -26,7 +26,7 @@
 ######################################################################
 
 DBG=1
-URLS=("https://easylist-downloads.adblockplus.org/easylistgermany.txt" "https://easylist-downloads.adblockplus.org/easylist.txt")
+URLS=("https://easylist-downloads.adblockplus.org/easylist.txt")
 TMPDIR=/tmp/privoxy-blocklist
 
 rm -rf $TMPDIR
